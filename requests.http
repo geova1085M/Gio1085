@@ -1,0 +1,71 @@
+### KALLPA AI — Peticiones de prueba
+### Requiere la extensión "REST Client" (humao.rest-client) en VS Code.
+### Antes de usar: npm install && npm run seed && npm start
+
+@baseUrl = http://localhost:3000
+@ruc = 0912345678001
+
+### Health check
+GET {{baseUrl}}/health
+
+### Tributario — declaración de IVA
+POST {{baseUrl}}/api/agentes/tributario
+Content-Type: application/json
+x-tenant-ruc: {{ruc}}
+
+{
+  "mensaje": "prepárame la declaración de IVA de este mes"
+}
+
+### Tributario — calendario de obligaciones
+POST {{baseUrl}}/api/agentes/tributario
+Content-Type: application/json
+x-tenant-ruc: {{ruc}}
+
+{
+  "mensaje": "¿cuáles son mis próximas fechas de declaración?"
+}
+
+### Contable — ponerse al día
+POST {{baseUrl}}/api/agentes/contable
+Content-Type: application/json
+x-tenant-ruc: {{ruc}}
+
+{
+  "mensaje": "ponte al día con mi contabilidad de este mes"
+}
+
+### Contable — estado de resultados
+POST {{baseUrl}}/api/agentes/contable
+Content-Type: application/json
+x-tenant-ruc: {{ruc}}
+
+{
+  "mensaje": "¿cómo va mi negocio este mes?"
+}
+
+### Mercado — requiere plan distinto de 'emprendedor' (el tenant demo es plan PYME)
+POST {{baseUrl}}/api/agentes/mercado
+Content-Type: application/json
+x-tenant-ruc: {{ruc}}
+
+{
+  "mensaje": "quiero saber si conviene abrir una ferretería en Portoviejo"
+}
+
+### Sin header de auth -> debe responder 401
+POST {{baseUrl}}/api/agentes/tributario
+Content-Type: application/json
+
+{
+  "mensaje": "hola"
+}
+
+### Módulo inexistente -> debe responder 404
+POST {{baseUrl}}/api/agentes/inexistente
+Content-Type: application/json
+x-tenant-ruc: {{ruc}}
+
+{
+  "mensaje": "hola"
+}
