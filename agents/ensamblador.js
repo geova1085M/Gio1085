@@ -65,7 +65,7 @@ export async function ejecutarAgente(modulo, tenant, mensaje, historial = []) {
 
   for (let i = 0; i < MAX_ITERACIONES_TOOLS; i++) {
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-sonnet-5',
       max_tokens: 4096,
       system,
       tools: config.tools,
