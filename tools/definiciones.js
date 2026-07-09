@@ -377,6 +377,40 @@ export const TOOLS_COBROS = [
     }
   },
   {
+    name: 'crearCliente',
+    description:
+      'Da de alta un cliente nuevo en el CRM de cobros del tenant (nombre, ' +
+      'identificación, email, teléfono, canal preferido de contacto).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        nombre: { type: 'string' },
+        identificacion: { type: 'string', description: 'Cédula o RUC del cliente (opcional)' },
+        email: { type: 'string' },
+        telefono: { type: 'string' },
+        canalPreferido: { type: 'string', enum: ['email', 'whatsapp', 'sms'], description: 'Default email' }
+      },
+      required: ['nombre']
+    }
+  },
+  {
+    name: 'registrarFactura',
+    description:
+      'Registra una factura/deuda nueva pendiente de cobro para un cliente ' +
+      'ya existente en el CRM.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        clienteId: { type: 'string' },
+        numero: { type: 'string', description: 'Número de factura (opcional)' },
+        monto: { type: 'number' },
+        fechaEmision: { type: 'string', description: 'YYYY-MM-DD, default hoy' },
+        fechaVencimiento: { type: 'string', description: 'YYYY-MM-DD' }
+      },
+      required: ['clienteId', 'monto', 'fechaVencimiento']
+    }
+  },
+  {
     name: 'enviarRecordatorio',
     description:
       'Envía (o simula, según el proveedor de mensajería configurado) un ' +

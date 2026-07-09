@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<title>KALLPA AI — CRM de Cobros</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 960px; margin: 2rem auto; padding: 0 1rem; background: #0f1115; color: #e6e6e6; }
+  h1 { font-size: 1.1rem; margin-bottom: 0.25rem; }
+  h2 { font-size: 0.95rem; margin: 1.5rem 0 0.5rem; color: #9aa0a6; }
+  .sub { color: #9aa0a6; font-size: 0.85rem; margin-bottom: 1rem; }
+  a { color: #8ab4f8; }
+  .controls { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+  .controls input { padding: 0.4rem 0.6rem; border-radius: 6px; border: 1px solid #333; background: #1a1d23; color: #e6e6e6; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  th, td { text-align: left; padding: 0.5rem; border-bottom: 1px solid #2a2d33; }
+  th { color: #9aa0a6; font-weight: 500; }
+  tr.row { cursor: pointer; }
+  tr.row:hover { background: #1a1d23; }
+  .estado-verde { color: #7fd88f; }
+  .estado-amarillo { color: #e6c260; }
+  .estado-rojo { color: #f28b82; }
+  form.inline { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.5rem; margin-top: 0.75rem; }
+  form.inline input, form.inline select { padding: 0.5rem; border-radius: 6px; border: 1px solid #333; background: #1a1d23; color: #e6e6e6; }
+  button { padding: 0.5rem 1rem; border-radius: 6px; border: none; background: #8ab4f8; color: #0f1115; font-weight: 600; cursor: pointer; }
+  button.secundario { background: #333; color: #e6e6e6; }
+  button.peligro { background: #f28b82; color: #1a1d23; }
+  #detalle { border: 1px solid #2a2d33; border-radius: 8px; padding: 1rem; margin-top: 1rem; display: none; }
+  .msg { font-size: 0.8rem; margin-top: 0.5rem; }
+</style>
+</head>
+<body>
+  <h1>KALLPA AI — CRM de Cobros</h1>
+  <div class="sub">Alta y gestión de clientes/facturas de la cartera por cobrar. Ver también <a href="/chat.html">el chatbot</a>.</div>
+
+  <div class="controls">
+    <label>RUC tenant: <input id="ruc" value="0912345678001" /></label>
+    <button onclick="cargarClientes()">Recargar</button>
+  </div>
+
+  <h2>Clientes</h2>
+  <table>
+    <thead><tr><th>Nombre</th><th>Email</th><th>Teléfono</th><th>Canal</th><th>Saldo pendiente</th></tr></thead>
+    <tbody id="tablaClientes"></tbody>
+  </table>
+
+  <h2>Agregar cliente</h2>
+  <form class="inline" id="formCliente">
+    <input name="nombre" placeholder="Nombre" required />
+    <input name="identificacion" placeholder="Identificación (opcional)" />
+    <input name="email" placeholder="Email" />
+    <input name="telefono" placeholder="Teléfono" />
+    <select name="canalPreferido">
+      <option value="email">email</option>
+      <option value="whatsapp">whatsapp</option>
+      <option value="sms">sms</option>
+    </select>
+    <button type="submit">Agregar cliente</button>
+  </form>
+  <div class="msg" id="msgCliente"></div>
+
+  <div id="detalle">
+    <h2 id="detalleTitulo">Detalle</h2>
+    <table>
+      <thead><tr><th>Factura</th><th>Monto</th><th>Saldo</th><th>Vence</th><th>Estado</th><th></th></tr></thead>
+      <tbody id="tablaFacturas"></tbody>
+    </table>
+
+    <h2>Agregar factura</h2>
+    <form class="inline" id="formFactura">
+      <input name="numero" placeholder="Número (opcional)" />
+      <input name="monto" type="number" step="0.01" placeholder="Monto" required />
+      <input name="fechaVencimiento" type="date" required />
+      <button type="submit">Agregar factura</button>
+      <button type="button" class="secundario" onclick="cerrarDetalle()">Cerrar</button>
+    </form>
+    <div class="msg" id="msgFactura"></div>
+  </div>
+
+  <script>
+    let clienteActivo = null;
+
+    function ruc() { return document.getElementById('ruc').value.trim(); }
+    function headers() { return { 'Content-Type': 'application/json', 'x-tenant-ruc': ruc() }; }
+
+    async function cargarClientes() {
+      const resp = await fetch('/api/crm/clientes', { headers: headers() });
+      const data = await resp.json();
+      const tbody = document.getElementById('tablaClientes');
+      tbody.innerHTML = '';
+      if (!data.ok) { tbody.innerHTML = '<tr><td colspan="5">Error: ' + (data.error || 'desconocido') + '</td></tr>'; return; }
+      data.clientes.forEach((c) => {
+        const tr = document.createElement('tr');
+        tr.className = 'row';
+        tr.onclick = () => verDetalle(c.id, c.nombre);
+        tr.innerHTML = `<td>${c.nombre}</td><td>${c.email || '—'}</td><td>${c.telefono || '—'}</td><td>${c.canal_preferido}</td><td>$${c.saldoPendiente.toFixed(2)}</td>`;
+        tbody.appendChild(tr);
+      });
+    }
+
+    async function verDetalle(clienteId, nombre) {
+      clienteActivo = clienteId;
+      const resp = await fetch('/api/crm/clientes/' + clienteId, { headers: headers() });
+      const data = await resp.json();
+      if (!data.ok) return;
+      document.getElementById('detalle').style.display = 'block';
+      document.getElementById('detalleTitulo').textContent = 'Detalle — ' + nombre;
+      const tbody = document.getElementById('tablaFacturas');
+      tbody.innerHTML = '';
+      const hoy = new Date();
+      data.cliente.facturas.forEach((f) => {
+        const dias = Math.floor((hoy.setHours(0,0,0,0) - new Date(f.fecha_vencimiento).setHours(0,0,0,0)) / 86400000);
+        const clase = f.estado !== 'pendiente' ? '' : dias <= 5 ? 'estado-verde' : dias <= 30 ? 'estado-amarillo' : 'estado-rojo';
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${f.numero || f.id}</td><td>$${f.monto}</td><td>$${f.saldo_pendiente}</td><td>${f.fecha_vencimiento}</td>` +
+          `<td class="${clase}">${f.estado}</td><td><button class="peligro" onclick="eliminarFactura('${f.id}')">Eliminar</button></td>`;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function cerrarDetalle() {
+      clienteActivo = null;
+      document.getElementById('detalle').style.display = 'none';
+    }
+
+    async function eliminarFactura(facturaId) {
+      await fetch('/api/crm/facturas/' + facturaId, { method: 'DELETE', headers: headers() });
+      verDetalle(clienteActivo, document.getElementById('detalleTitulo').textContent.replace('Detalle — ', ''));
+      cargarClientes();
+    }
+
+    document.getElementById('formCliente').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const datos = Object.fromEntries(new FormData(e.target).entries());
+      const resp = await fetch('/api/crm/clientes', { method: 'POST', headers: headers(), body: JSON.stringify(datos) });
+      const data = await resp.json();
+      document.getElementById('msgCliente').textContent = data.ok ? 'Cliente agregado.' : ('Error: ' + data.error);
+      if (data.ok) { e.target.reset(); cargarClientes(); }
+    });
+
+    document.getElementById('formFactura').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!clienteActivo) return;
+      const datos = Object.fromEntries(new FormData(e.target).entries());
+      const resp = await fetch('/api/crm/clientes/' + clienteActivo + '/facturas', { method: 'POST', headers: headers(), body: JSON.stringify(datos) });
+      const data = await resp.json();
+      document.getElementById('msgFactura').textContent = data.ok ? 'Factura agregada.' : ('Error: ' + data.error);
+      if (data.ok) { e.target.reset(); verDetalle(clienteActivo, document.getElementById('detalleTitulo').textContent.replace('Detalle — ', '')); cargarClientes(); }
+    });
+
+    cargarClientes();
+  </script>
+</body>
+</html>

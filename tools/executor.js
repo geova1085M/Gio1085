@@ -25,6 +25,7 @@ import { evaluarSemaforoCobro, diasVencido } from '../semaforo-cobros.js';
 import { enviarMensaje } from '../mensajeria.js';
 import { crearTicket } from '../db/tickets.js';
 import { getDB } from '../db/tenants.js';
+import * as crm from '../db/crm.js';
 
 const MARKET_API = process.env.MARKET_API_URL || 'http://localhost:8002';
 
@@ -325,12 +326,26 @@ const handlers = {
   },
 
   async obtenerDetalleCliente({ clienteId }, tenant) {
-    const db = getDB(tenant.ruc);
-    const cliente = db.prepare('SELECT * FROM clientes WHERE id = ?').get(clienteId);
-    if (!cliente) return { error: 'Cliente no encontrado', clienteId };
-    const facturas = db.prepare('SELECT * FROM facturas WHERE cliente_id = ? ORDER BY fecha_vencimiento DESC').all(clienteId);
-    const gestiones = db.prepare('SELECT * FROM gestiones_cobro WHERE cliente_id = ? ORDER BY creado_en DESC LIMIT 20').all(clienteId);
+    const detalle = crm.obtenerCliente(tenant.ruc, clienteId);
+    if (!detalle) return { error: 'Cliente no encontrado', clienteId };
+    const { facturas, gestiones, ...cliente } = detalle;
     return { cliente, facturas, gestiones };
+  },
+
+  async crearCliente(datos, tenant) {
+    try {
+      return { cliente: crm.crearCliente(tenant.ruc, datos) };
+    } catch (err) {
+      return { error: err.message };
+    }
+  },
+
+  async registrarFactura({ clienteId, numero, monto, fechaEmision, fechaVencimiento }, tenant) {
+    try {
+      return { factura: crm.crearFactura(tenant.ruc, clienteId, { numero, monto, fechaEmision, fechaVencimiento }) };
+    } catch (err) {
+      return { error: err.message };
+    }
   },
 
   async enviarRecordatorio({ clienteId, facturaId, canal, mensaje }, tenant) {

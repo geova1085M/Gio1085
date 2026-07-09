@@ -96,6 +96,32 @@ x-tenant-ruc: {{ruc}}
 
 {}
 
+### CRM — listar clientes
+GET {{baseUrl}}/api/crm/clientes
+x-tenant-ruc: {{ruc}}
+
+### CRM — crear cliente nuevo
+POST {{baseUrl}}/api/crm/clientes
+Content-Type: application/json
+x-tenant-ruc: {{ruc}}
+
+{
+  "nombre": "Panadería Sol",
+  "email": "pagos@panaderiasol.test",
+  "canalPreferido": "email"
+}
+
+### CRM — registrar factura (reemplaza CLIENTE_ID por el id devuelto arriba)
+POST {{baseUrl}}/api/crm/clientes/CLIENTE_ID/facturas
+Content-Type: application/json
+x-tenant-ruc: {{ruc}}
+
+{
+  "numero": "F-002-001",
+  "monto": 200,
+  "fechaVencimiento": "2026-06-01"
+}
+
 ### Sin header de auth -> debe responder 401
 POST {{baseUrl}}/api/agentes/tributario
 Content-Type: application/json

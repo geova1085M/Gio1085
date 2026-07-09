@@ -30,23 +30,46 @@ n8n: en vez de un editor visual de nodos, es este mismo backend Node —
 salida para cualquier envío, y `semaforo-cobros.js` clasifica la urgencia
 de forma determinista (nunca lo decide el modelo).
 
-Tres formas de probarlo hoy, sin credenciales de email/WhatsApp reales:
+Cuatro formas de probarlo hoy:
 
-1. **Chat de prueba en el navegador**: con el servidor corriendo, abre
-   http://localhost:3000/chat.html — elige el módulo "cobros", escribe
-   "¿quién me debe ahorita?" o "envíale recordatorio a todos los
-   morosos".
-2. **`requests.http`** (VS Code + REST Client): bloques nuevos de
-   `cobros` y de automatización directa.
-3. **Automatización sin chat** (simula el disparo de un cron/n8n):
+1. **CRM en el navegador**: http://localhost:3000/crm.html — alta de
+   clientes y facturas con un formulario, sin tocar código ni SQL.
+2. **Chat de prueba en el navegador**: http://localhost:3000/chat.html —
+   elige el módulo "cobros", escribe "¿quién me debe ahorita?", "agrega
+   un cliente nuevo" o "envíale recordatorio a todos los morosos".
+3. **`requests.http`** (VS Code + REST Client): bloques de `cobros`,
+   `crm` y de automatización directa.
+4. **Automatización sin chat** (simula el disparo de un cron/n8n):
    `POST /api/automatizacion/cobros/ejecutar` — corre la campaña completa
    de recordatorios sin pasar por Claude.
 
+### Envío real de email (Gmail)
+
 Por defecto los "envíos" se simulan: se imprimen en la consola del
-servidor y quedan registrados en `gestiones_cobro` (ver `mensajeria.js`).
-Para conectar un canal real (Gmail/SMTP, WhatsApp Business API, Twilio
-SMS) solo hay que implementar un `case` nuevo en `mensajeria.js` y setear
-`MENSAJERIA_PROVIDER` en `.env` — ningún otro archivo necesita cambiar.
+servidor y quedan registrados en `gestiones_cobro`. Para que el canal
+`email` envíe correos de verdad usando tu cuenta de Gmail:
+
+1. Activa la verificación en 2 pasos en tu cuenta de Google (si no la
+   tienes ya): https://myaccount.google.com/signinoptions/two-step-verification
+2. Genera una **contraseña de aplicación**:
+   https://myaccount.google.com/apppasswords (elige app "Correo" y
+   dispositivo "Otro", ponle un nombre como "Kallpa Cobros").
+3. En tu `.env`:
+   ```
+   MENSAJERIA_PROVIDER=gmail
+   GMAIL_USER=tucorreo@gmail.com
+   GMAIL_APP_PASSWORD=la contraseña de 16 caracteres que te dio Google
+   ```
+4. Reinicia el servidor. Ahora `enviarRecordatorio` y
+   `ejecutarCampanaRecordatorios` mandan correos reales a los clientes con
+   `canalPreferido = 'email'`.
+
+⚠️ **Antes de probar la campaña masiva con este modo activo**, cambia el
+email de tus clientes de prueba (`npm run seed:cobros` o el CRM) a un
+correo tuyo — vas a mandarte recordatorios reales, no a clientes de
+verdad. `whatsapp`/`sms` siguen simulados: no hay Twilio/WhatsApp Business
+API conectado todavía (agregar un proveedor ahí es lo mismo que se hizo
+con Gmail, en `mensajeria.js`).
 
 En desarrollo con recarga automática:
 
@@ -77,12 +100,21 @@ POST /api/agentes/mercado       { mensaje, historial? }
 POST /api/agentes/cobros        { mensaje, historial? }
 
 POST /api/automatizacion/cobros/ejecutar  { diasMinimo?, canal? }
+
+GET    /api/crm/clientes
+POST   /api/crm/clientes                       { nombre, identificacion?, email?, telefono?, canalPreferido? }
+GET    /api/crm/clientes/:id
+PUT    /api/crm/clientes/:id
+DELETE /api/crm/clientes/:id                   (falla si tiene facturas pendientes)
+POST   /api/crm/clientes/:id/facturas          { numero?, monto, fechaEmision?, fechaVencimiento }
+PUT    /api/crm/facturas/:id
+DELETE /api/crm/facturas/:id
 ```
 
 Todos requieren el header `x-tenant-ruc`. `mercado` además requiere que
 el tenant tenga `plan` distinto de `emprendedor` (ver gating en
-`routes/agentes-routes.js`). El endpoint de automatización no pasa por
-Claude: llama directo al mismo handler determinista que usan las tools.
+`routes/agentes-routes.js`). El endpoint de automatización y los de
+`/api/crm` no pasan por Claude: son CRUD/lógica determinista directa.
 
 Respuesta:
 
@@ -103,6 +135,7 @@ Respuesta:
 | `middleware/auth.js` | Resuelve `req.auth.ruc` (stub de dev) |
 | `routes/agentes-routes.js` | HTTP → resolución de tenant → gating de plan → dispatch al ensamblador |
 | `routes/automatizacion-routes.js` | Disparo directo de la campaña de cobros sin pasar por Claude (equivalente a un cron) |
+| `routes/crm-routes.js` / `db/crm.js` | CRUD de clientes/facturas (API REST), reusado también por las tools del chat |
 | `agents/ensamblador.js` | Ensambla system prompt (con prompt caching) + tools, corre el ciclo `tool_use` contra Claude |
 | `prompts/systemPromptBase.js` | Identidad + contexto de tenant (capa cacheada) |
 | `prompts/ejecucion-{tributario,contable,mercado,cobros}.js` | Instrucciones de ejecución por módulo (capa cacheada) |
@@ -115,6 +148,7 @@ Respuesta:
 | `mensajeria.js` | Único punto de salida para recordatorios (email/whatsapp/sms); hoy simula, mañana se conecta a un proveedor real |
 | `estudio-mercado.js` | Persistencia de estudio + render de PDF (pdfkit) |
 | `public/chat.html` | Chatbot mínimo en el navegador para probar cualquier módulo sin REST Client |
+| `public/crm.html` | CRM mínimo: alta/baja de clientes y facturas sin tocar código |
 
 Cada uno de estos archivos tiene un subagente de Claude Code espejo en
 `.claude/agents/` (ej. `kallpa-tools-executor`) con las reglas de
@@ -137,13 +171,18 @@ negocio que no se deben romper al modificarlo.
   completa.
 - **PDF de estudio de mercado**: placeholder de una página con el JSON
   del estudio, no el diseño de marca Kallpa de 7 secciones.
-- **Mensajería de cobros**: `mensajeria.js` solo trae el proveedor
-  `consola` (imprime y registra, no envía nada real). Conectar Gmail/SMTP,
-  WhatsApp Business API o Twilio SMS es agregar un `case` ahí — el resto
-  del sistema no necesita cambiar. La escalación automática a "cobranza
-  legal" en semáforo rojo crea un ticket en cada corrida de campaña sin
-  deduplicar (no revisa si ya existe uno abierto para esa factura) —
-  simplificación de demo, no el comportamiento de producción.
+- **Mensajería de cobros**: `mensajeria.js` trae `consola` (default) y
+  `gmail` (SMTP con contraseña de aplicación) para el canal `email`.
+  `whatsapp`/`sms` siguen siempre en modo consola — conectar WhatsApp
+  Business API o Twilio es agregar un `case` más ahí, el resto del sistema
+  no necesita cambiar. La escalación automática a "cobranza legal" en
+  semáforo rojo crea un ticket en cada corrida de campaña sin deduplicar
+  (no revisa si ya existe uno abierto para esa factura) — simplificación
+  de demo, no el comportamiento de producción.
+- **CRM de clientes**: `DELETE /api/crm/clientes/:id` bloquea el borrado
+  si el cliente tiene facturas pendientes, pero no valida formato de
+  email/teléfono ni deduplica clientes por identificación — validaciones
+  a agregar antes de un uso real con datos de terceros.
 
 ## Datos de prueba
 
