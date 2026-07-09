@@ -9,6 +9,7 @@
  *   POST /api/agentes/tributario  { mensaje, historial? }
  *   POST /api/agentes/contable    { mensaje, historial? }
  *   POST /api/agentes/mercado     { mensaje, historial? }
+ *   POST /api/agentes/cobros      { mensaje, historial? }
  *
  * El tenant se resuelve del token de sesión (middleware auth existente),
  * nunca del body — un cliente no puede consultar datos de otro RUC.
@@ -21,7 +22,7 @@ import { registrarUsoTokens } from '../db/metricas.js';
 
 const router = express.Router();
 
-const MODULOS_VALIDOS = ['tributario', 'contable', 'mercado'];
+const MODULOS_VALIDOS = ['tributario', 'contable', 'mercado', 'cobros'];
 
 router.post('/:modulo', async (req, res) => {
   const { modulo } = req.params;

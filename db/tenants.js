@@ -131,6 +131,40 @@ export const SCHEMA_TENANT = `
     estado TEXT NOT NULL,
     creado_en TEXT DEFAULT CURRENT_TIMESTAMP
   );
+
+  CREATE TABLE IF NOT EXISTS clientes (
+    id TEXT PRIMARY KEY,
+    nombre TEXT NOT NULL,
+    identificacion TEXT,          -- cédula/RUC del cliente
+    email TEXT,
+    telefono TEXT,                -- para whatsapp/sms
+    canal_preferido TEXT NOT NULL DEFAULT 'email', -- email | whatsapp | sms
+    creado_en TEXT DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS facturas (
+    id TEXT PRIMARY KEY,
+    cliente_id TEXT NOT NULL,
+    numero TEXT,
+    monto REAL NOT NULL,
+    saldo_pendiente REAL NOT NULL,
+    fecha_emision TEXT NOT NULL,
+    fecha_vencimiento TEXT NOT NULL,
+    estado TEXT NOT NULL DEFAULT 'pendiente', -- pendiente | pagada | incobrable
+    creado_en TEXT DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS gestiones_cobro (
+    id TEXT PRIMARY KEY,
+    cliente_id TEXT NOT NULL,
+    factura_id TEXT,
+    canal TEXT NOT NULL,           -- email | whatsapp | sms
+    tipo TEXT NOT NULL,            -- recordatorio | aviso_vencido | aviso_urgente
+    mensaje TEXT NOT NULL,
+    destino TEXT,                  -- email/teléfono usado
+    estado_envio TEXT NOT NULL DEFAULT 'simulado', -- simulado | enviado | fallido
+    creado_en TEXT DEFAULT CURRENT_TIMESTAMP
+  );
 `;
 
 // Plan de cuentas simplificado (subset de demostración del plan real de

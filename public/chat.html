@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<title>KALLPA AI — Chat de prueba</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; background: #0f1115; color: #e6e6e6; }
+  h1 { font-size: 1.1rem; margin-bottom: 0.25rem; }
+  .sub { color: #9aa0a6; font-size: 0.85rem; margin-bottom: 1rem; }
+  .controls { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
+  .controls input, .controls select { padding: 0.4rem 0.6rem; border-radius: 6px; border: 1px solid #333; background: #1a1d23; color: #e6e6e6; }
+  #log { border: 1px solid #2a2d33; border-radius: 8px; padding: 1rem; height: 50vh; overflow-y: auto; background: #14161b; }
+  .msg { margin-bottom: 0.75rem; white-space: pre-wrap; line-height: 1.4; }
+  .msg.user { color: #8ab4f8; }
+  .msg.bot { color: #e6e6e6; }
+  .msg .who { font-size: 0.75rem; opacity: 0.6; display: block; margin-bottom: 0.15rem; }
+  form { display: flex; gap: 0.5rem; margin-top: 1rem; }
+  form input { flex: 1; padding: 0.6rem; border-radius: 6px; border: 1px solid #333; background: #1a1d23; color: #e6e6e6; }
+  button { padding: 0.6rem 1rem; border-radius: 6px; border: none; background: #8ab4f8; color: #0f1115; font-weight: 600; cursor: pointer; }
+  button:disabled { opacity: 0.5; cursor: default; }
+  .meta { font-size: 0.75rem; color: #9aa0a6; margin-top: 0.3rem; }
+</style>
+</head>
+<body>
+  <h1>KALLPA AI — Chat de prueba</h1>
+  <div class="sub">Habla directo con un agente (cobros, tributario, contable, mercado). Header <code>x-tenant-ruc</code> se manda con cada mensaje.</div>
+
+  <div class="controls">
+    <input id="ruc" value="0912345678001" placeholder="RUC del tenant" />
+    <select id="modulo">
+      <option value="cobros">cobros</option>
+      <option value="tributario">tributario</option>
+      <option value="contable">contable</option>
+      <option value="mercado">mercado</option>
+    </select>
+  </div>
+
+  <div id="log"></div>
+
+  <form id="form">
+    <input id="mensaje" placeholder="Escribe tu mensaje..." autocomplete="off" />
+    <button type="submit">Enviar</button>
+  </form>
+
+  <script>
+    const log = document.getElementById('log');
+    const form = document.getElementById('form');
+    const mensajeInput = document.getElementById('mensaje');
+    const rucInput = document.getElementById('ruc');
+    const moduloSelect = document.getElementById('modulo');
+    let historial = [];
+
+    function addMsg(who, texto) {
+      const div = document.createElement('div');
+      div.className = 'msg ' + (who === 'user' ? 'user' : 'bot');
+      div.innerHTML = '<span class="who">' + (who === 'user' ? 'Tú' : 'Agente') + '</span>' + texto.replace(/</g, '&lt;');
+      log.appendChild(div);
+      log.scrollTop = log.scrollHeight;
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const mensaje = mensajeInput.value.trim();
+      if (!mensaje) return;
+      addMsg('user', mensaje);
+      mensajeInput.value = '';
+      form.querySelector('button').disabled = true;
+
+      try {
+        const resp = await fetch('/api/agentes/' + moduloSelect.value, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-tenant-ruc': rucInput.value },
+          body: JSON.stringify({ mensaje, historial })
+        });
+        const data = await resp.json();
+        if (!data.ok) {
+          addMsg('bot', 'Error: ' + (data.mensaje || data.error));
+        } else {
+          addMsg('bot', data.respuesta);
+          historial.push({ role: 'user', content: mensaje });
+          historial.push({ role: 'assistant', content: data.respuesta });
+          if (data.toolsUsadas && data.toolsUsadas.length) {
+            const meta = document.createElement('div');
+            meta.className = 'meta';
+            meta.textContent = 'tools usadas: ' + data.toolsUsadas.join(', ');
+            log.appendChild(meta);
+          }
+        }
+      } catch (err) {
+        addMsg('bot', 'Error de red: ' + err.message);
+      } finally {
+        form.querySelector('button').disabled = false;
+        mensajeInput.focus();
+      }
+    });
+  </script>
+</body>
+</html>

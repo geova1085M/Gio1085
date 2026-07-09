@@ -16,16 +16,19 @@
 import 'dotenv/config';
 import express from 'express';
 import agentesRoutes from './routes/agentes-routes.js';
+import automatizacionRoutes from './routes/automatizacion-routes.js';
 import { authDev } from './middleware/auth.js';
 
 const app = express();
 app.use(express.json());
+app.use(express.static('public'));
 
 app.get('/health', (_req, res) => {
   res.json({ ok: true, servicio: 'kallpa-ai-agentes' });
 });
 
 app.use('/api/agentes', authDev, agentesRoutes);
+app.use('/api/automatizacion', authDev, automatizacionRoutes);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {

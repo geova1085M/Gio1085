@@ -16,14 +16,28 @@
  *   Supabase               → tickets HITL
  */
 
+import crypto from 'node:crypto';
 import { generarF104 } from '../f104-borrador.js';
 import * as contab from '../contabilidad-db.js';
 import { generarEstudio, generarPDF } from '../estudio-mercado.js';
 import { evaluarSemaforo } from '../semaforo.js';
+import { evaluarSemaforoCobro, diasVencido } from '../semaforo-cobros.js';
+import { enviarMensaje } from '../mensajeria.js';
 import { crearTicket } from '../db/tickets.js';
 import { getDB } from '../db/tenants.js';
 
 const MARKET_API = process.env.MARKET_API_URL || 'http://localhost:8002';
+
+// Plantilla determinista por nivel de semáforo, usada solo por la campaña
+// automática (ejecutarCampanaRecordatorios). El envío conversacional
+// (enviarRecordatorio) usa el texto que redacta el propio agente.
+function plantillaRecordatorio(f) {
+  const base = `Hola ${f.nombre}, te recordamos que la factura ${f.numero || f.facturaId} ` +
+    `por $${f.saldoPendiente} venció el ${f.fechaVencimiento} (${f.diasVencido} días de atraso).`;
+  if (f.semaforo === 'verde') return `${base} Cualquier consulta, escríbenos.`;
+  if (f.semaforo === 'amarillo') return `${base} Si necesitas un plan de pago, contáctanos para acordarlo.`;
+  return `${base} Este caso ha sido remitido a nuestro equipo de cobranza.`;
+}
 
 // ── Handlers ───────────────────────────────────────────────────
 
@@ -274,6 +288,139 @@ const handlers = {
     // estudio-mercado.js — 7 secciones, disciplina de fuentes obligatoria
     const pdf = await generarPDF(tenant.ruc, estudioId);
     return { url: pdf.url, paginas: pdf.paginas, fuentesCitadas: pdf.fuentes };
+  },
+
+  // ═══ COBROS ═══
+
+  async listarClientesMorosos({ diasMinimo = 1 }, tenant) {
+    const db = getDB(tenant.ruc);
+    const rows = db.prepare(`
+      SELECT f.id AS factura_id, f.numero, f.monto, f.saldo_pendiente,
+             f.fecha_vencimiento, c.id AS cliente_id, c.nombre,
+             c.email, c.telefono, c.canal_preferido
+      FROM facturas f
+      JOIN clientes c ON c.id = f.cliente_id
+      WHERE f.estado = 'pendiente'
+      ORDER BY f.fecha_vencimiento ASC
+    `).all();
+
+    const vencidas = rows
+      .map((r) => ({ ...r, dias: diasVencido(r.fecha_vencimiento) }))
+      .filter((r) => r.dias >= diasMinimo)
+      .map((r) => ({
+        clienteId: r.cliente_id,
+        nombre: r.nombre,
+        facturaId: r.factura_id,
+        numero: r.numero,
+        saldoPendiente: r.saldo_pendiente,
+        fechaVencimiento: r.fecha_vencimiento,
+        diasVencido: r.dias,
+        semaforo: evaluarSemaforoCobro(r.dias).estado,
+        canalPreferido: r.canal_preferido,
+        contacto: r.canal_preferido === 'email' ? r.email : r.telefono
+      }));
+
+    const totalAdeudado = vencidas.reduce((sum, v) => sum + v.saldoPendiente, 0);
+    return { totalClientes: new Set(vencidas.map((v) => v.clienteId)).size, totalAdeudado, facturas: vencidas };
+  },
+
+  async obtenerDetalleCliente({ clienteId }, tenant) {
+    const db = getDB(tenant.ruc);
+    const cliente = db.prepare('SELECT * FROM clientes WHERE id = ?').get(clienteId);
+    if (!cliente) return { error: 'Cliente no encontrado', clienteId };
+    const facturas = db.prepare('SELECT * FROM facturas WHERE cliente_id = ? ORDER BY fecha_vencimiento DESC').all(clienteId);
+    const gestiones = db.prepare('SELECT * FROM gestiones_cobro WHERE cliente_id = ? ORDER BY creado_en DESC LIMIT 20').all(clienteId);
+    return { cliente, facturas, gestiones };
+  },
+
+  async enviarRecordatorio({ clienteId, facturaId, canal, mensaje }, tenant) {
+    const db = getDB(tenant.ruc);
+    const cliente = db.prepare('SELECT * FROM clientes WHERE id = ?').get(clienteId);
+    if (!cliente) return { error: 'Cliente no encontrado', clienteId };
+
+    const destinatario = canal === 'email' ? cliente.email : cliente.telefono;
+    const resultado = await enviarMensaje({
+      canal,
+      destinatario,
+      asunto: canal === 'email' ? 'Recordatorio de pago pendiente' : undefined,
+      cuerpo: mensaje
+    });
+
+    const id = `ges_${crypto.randomUUID()}`;
+    db.prepare(`
+      INSERT INTO gestiones_cobro (id, cliente_id, factura_id, canal, tipo, mensaje, destino, estado_envio)
+      VALUES (?, ?, ?, ?, 'recordatorio', ?, ?, ?)
+    `).run(id, clienteId, facturaId || null, canal, mensaje, destinatario || null, resultado.estado);
+
+    return { gestionId: id, ...resultado };
+  },
+
+  async ejecutarCampanaRecordatorios({ diasMinimo = 1, canal }, tenant) {
+    const db = getDB(tenant.ruc);
+    const { facturas } = await handlers.listarClientesMorosos({ diasMinimo }, tenant);
+
+    const resumen = { enviados: 0, fallidos: 0, escalados: 0, detalle: [] };
+
+    for (const f of facturas) {
+      const canalUsado = canal || f.canalPreferido;
+      const plantilla = plantillaRecordatorio(f);
+
+      const envio = await handlers.enviarRecordatorio(
+        { clienteId: f.clienteId, facturaId: f.facturaId, canal: canalUsado, mensaje: plantilla },
+        tenant
+      );
+
+      if (envio.estado === 'simulado' || envio.estado === 'enviado') {
+        resumen.enviados++;
+      } else {
+        resumen.fallidos++;
+      }
+      resumen.detalle.push({ clienteId: f.clienteId, facturaId: f.facturaId, semaforo: f.semaforo, resultado: envio.estado });
+
+      // Escalación automática: NUNCA decidida por el agente (mismo patrón que F104/estados).
+      if (f.semaforo === 'rojo') {
+        await crearTicket({
+          ruc: tenant.ruc,
+          tipo: 'cobranza_legal',
+          origen: 'escalacion_automatica',
+          urgencia: 'alta',
+          motivo: `Factura ${f.numero || f.facturaId} vencida hace ${f.diasVencido} días ($${f.saldoPendiente})`,
+          payload: { clienteId: f.clienteId, facturaId: f.facturaId }
+        });
+        resumen.escalados++;
+      }
+    }
+
+    return resumen;
+  },
+
+  async registrarPago({ facturaId, monto, fecha }, tenant) {
+    const db = getDB(tenant.ruc);
+    const factura = db.prepare('SELECT * FROM facturas WHERE id = ?').get(facturaId);
+    if (!factura) return { error: 'Factura no encontrada', facturaId };
+
+    const nuevoSaldo = Math.max(0, Number((factura.saldo_pendiente - monto).toFixed(2)));
+    const nuevoEstado = nuevoSaldo === 0 ? 'pagada' : 'pendiente';
+    db.prepare('UPDATE facturas SET saldo_pendiente = ?, estado = ? WHERE id = ?')
+      .run(nuevoSaldo, nuevoEstado, facturaId);
+
+    return { facturaId, montoAplicado: monto, saldoPendiente: nuevoSaldo, estado: nuevoEstado, fecha: fecha || null };
+  },
+
+  async escalarGestionCobranza({ motivo, urgencia, contexto = {} }, tenant) {
+    const ticket = await crearTicket({
+      ruc: tenant.ruc,
+      tipo: 'cobranza_solicitada',
+      origen: 'escalacion_manual_agente',
+      urgencia,
+      motivo,
+      payload: contexto
+    });
+    return {
+      ticketId: ticket.id,
+      estado: 'creado',
+      mensaje: `Un profesional de cobranza Kallpa revisará el caso (urgencia ${urgencia}).`
+    };
   },
 
   // ═══ COMÚN — HITL ═══

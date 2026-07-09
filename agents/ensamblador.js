@@ -16,7 +16,8 @@ import { buildBasePromptV2 } from '../prompts/systemPromptBase.js'; // v2 canón
 import { EJECUCION_TRIBUTARIO } from '../prompts/ejecucion-tributario.js';
 import { EJECUCION_CONTABLE } from '../prompts/ejecucion-contable.js';
 import { EJECUCION_MERCADO } from '../prompts/ejecucion-mercado.js';
-import { TOOLS_TRIBUTARIO, TOOLS_CONTABLE, TOOLS_MERCADO } from '../tools/definiciones.js';
+import { EJECUCION_COBROS } from '../prompts/ejecucion-cobros.js';
+import { TOOLS_TRIBUTARIO, TOOLS_CONTABLE, TOOLS_MERCADO, TOOLS_COBROS } from '../tools/definiciones.js';
 import { ejecutarTool } from '../tools/executor.js';
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -24,7 +25,8 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const MODULOS = {
   tributario: { instrucciones: EJECUCION_TRIBUTARIO, tools: TOOLS_TRIBUTARIO },
   contable:   { instrucciones: EJECUCION_CONTABLE,   tools: TOOLS_CONTABLE },
-  mercado:    { instrucciones: EJECUCION_MERCADO,    tools: TOOLS_MERCADO }
+  mercado:    { instrucciones: EJECUCION_MERCADO,    tools: TOOLS_MERCADO },
+  cobros:     { instrucciones: EJECUCION_COBROS,     tools: TOOLS_COBROS }
 };
 
 const MAX_ITERACIONES_TOOLS = 10; // techo de seguridad del ciclo agéntico

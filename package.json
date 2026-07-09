@@ -8,6 +8,7 @@
     "start": "node server.js",
     "dev": "node --watch server.js",
     "seed": "node scripts/seed-demo.js",
+    "seed:cobros": "node scripts/seed-cobros.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {

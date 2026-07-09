@@ -53,6 +53,49 @@ x-tenant-ruc: {{ruc}}
   "mensaje": "quiero saber si conviene abrir una ferretería en Portoviejo"
 }
 
+### Cobros — quién me debe (npm run seed:cobros primero)
+POST {{baseUrl}}/api/agentes/cobros
+Content-Type: application/json
+x-tenant-ruc: {{ruc}}
+
+{
+  "mensaje": "¿quién me debe ahorita y hace cuánto?"
+}
+
+### Cobros — enviar recordatorio a un cliente puntual
+POST {{baseUrl}}/api/agentes/cobros
+Content-Type: application/json
+x-tenant-ruc: {{ruc}}
+
+{
+  "mensaje": "mándale un recordatorio a Distribuidora El Roble"
+}
+
+### Cobros — campaña masiva vía chat
+POST {{baseUrl}}/api/agentes/cobros
+Content-Type: application/json
+x-tenant-ruc: {{ruc}}
+
+{
+  "mensaje": "envíale recordatorio a todos los clientes vencidos"
+}
+
+### Cobros — registrar pago
+POST {{baseUrl}}/api/agentes/cobros
+Content-Type: application/json
+x-tenant-ruc: {{ruc}}
+
+{
+  "mensaje": "Constructora Andina ya pagó los $850 de la factura F-001-234"
+}
+
+### Automatización de cobros — disparo directo sin chat (equivalente al cron/n8n)
+POST {{baseUrl}}/api/automatizacion/cobros/ejecutar
+Content-Type: application/json
+x-tenant-ruc: {{ruc}}
+
+{}
+
 ### Sin header de auth -> debe responder 401
 POST {{baseUrl}}/api/agentes/tributario
 Content-Type: application/json

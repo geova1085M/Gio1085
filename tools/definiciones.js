@@ -346,3 +346,101 @@ export const TOOLS_MERCADO = [
     }
   }
 ];
+
+// ── AGENTE DE COBROS ───────────────────────────────────────────
+export const TOOLS_COBROS = [
+  {
+    name: 'listarClientesMorosos',
+    description:
+      'Lista clientes con facturas vencidas del tenant. El backend calcula ' +
+      'días de atraso y el semáforo (verde/amarillo/rojo) de cada factura ' +
+      'de forma determinista — el agente nunca calcula días ni clasifica.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        diasMinimo: { type: 'integer', description: 'Días de atraso mínimos a incluir (default 1)' }
+      },
+      required: []
+    }
+  },
+  {
+    name: 'obtenerDetalleCliente',
+    description:
+      'Devuelve la ficha de un cliente: datos de contacto, canal preferido, ' +
+      'facturas (pagadas y pendientes) y gestiones de cobro previas.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        clienteId: { type: 'string' }
+      },
+      required: ['clienteId']
+    }
+  },
+  {
+    name: 'enviarRecordatorio',
+    description:
+      'Envía (o simula, según el proveedor de mensajería configurado) un ' +
+      'recordatorio de pago a un cliente por un canal específico, y lo ' +
+      'registra en su historial de gestiones. El agente redacta el texto; ' +
+      'esta tool es la única forma real de entregarlo.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        clienteId: { type: 'string' },
+        facturaId: { type: 'string' },
+        canal: { type: 'string', enum: ['email', 'whatsapp', 'sms'] },
+        mensaje: { type: 'string', description: 'Texto redactado por el agente' }
+      },
+      required: ['clienteId', 'facturaId', 'canal', 'mensaje']
+    }
+  },
+  {
+    name: 'ejecutarCampanaRecordatorios',
+    description:
+      'Corre la automatización completa: para cada factura vencida (según ' +
+      'diasMinimo) genera un mensaje por plantilla según su semáforo y lo ' +
+      'envía por el canal preferido de cada cliente. Las facturas que caen ' +
+      'en semáforo rojo se escalan automáticamente a cobranza (el backend ' +
+      'lo hace solo, el agente nunca llama escalarGestionCobranza en ese caso). ' +
+      'Devuelve un resumen: enviados, fallidos y escalados.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        diasMinimo: { type: 'integer', description: 'Default 1' },
+        canal: { type: 'string', enum: ['email', 'whatsapp', 'sms'], description: 'Si se omite, usa el canal preferido de cada cliente' }
+      },
+      required: []
+    }
+  },
+  {
+    name: 'registrarPago',
+    description:
+      'Registra un pago (total o parcial) sobre una factura y actualiza su ' +
+      'saldo pendiente. Si el saldo llega a 0, la factura queda pagada.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        facturaId: { type: 'string' },
+        monto: { type: 'number' },
+        fecha: { type: 'string', description: 'YYYY-MM-DD' }
+      },
+      required: ['facturaId', 'monto']
+    }
+  },
+  {
+    name: 'escalarGestionCobranza',
+    description:
+      'Crea un ticket para que un profesional de cobranza/legal revise el ' +
+      'caso. Usar SOLO cuando el usuario lo pide explícitamente antes de que ' +
+      'el backend lo haga automático por semáforo rojo.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        motivo: { type: 'string' },
+        urgencia: { type: 'string', enum: ['alta', 'media', 'baja'] },
+        contexto: { type: 'object', description: 'clienteId, facturaId, montos relevantes' }
+      },
+      required: ['motivo', 'urgencia']
+    }
+  }
+];
