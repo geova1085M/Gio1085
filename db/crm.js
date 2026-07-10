@@ -11,6 +11,32 @@
 import crypto from 'node:crypto';
 import { getDB } from './tenants.js';
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const CANALES_VALIDOS = ['email', 'whatsapp', 'sms'];
+
+function validarDatosCliente({ email, telefono, canalPreferido }) {
+  if (email && !EMAIL_RE.test(email)) {
+    throw new Error(`Email inválido: ${email}`);
+  }
+  if (canalPreferido && !CANALES_VALIDOS.includes(canalPreferido)) {
+    throw new Error(`canalPreferido debe ser uno de: ${CANALES_VALIDOS.join(', ')}`);
+  }
+  if (canalPreferido === 'email' && !email) {
+    throw new Error('canalPreferido=email requiere un email');
+  }
+  if ((canalPreferido === 'whatsapp' || canalPreferido === 'sms') && !telefono) {
+    throw new Error(`canalPreferido=${canalPreferido} requiere un teléfono`);
+  }
+}
+
+function existeIdentificacion(db, identificacion, excluirId) {
+  if (!identificacion) return false;
+  const fila = db.prepare(
+    'SELECT id FROM clientes WHERE identificacion = ? AND id != ?'
+  ).get(identificacion, excluirId || '');
+  return !!fila;
+}
+
 export function listarClientes(ruc) {
   const db = getDB(ruc);
   const clientes = db.prepare('SELECT * FROM clientes ORDER BY nombre').all();
@@ -24,7 +50,13 @@ export function listarClientes(ruc) {
 
 export function crearCliente(ruc, { nombre, identificacion, email, telefono, canalPreferido = 'email' }) {
   if (!nombre) throw new Error('nombre es requerido');
+  validarDatosCliente({ email, telefono, canalPreferido });
+
   const db = getDB(ruc);
+  if (existeIdentificacion(db, identificacion)) {
+    throw new Error(`Ya existe un cliente con identificación ${identificacion}`);
+  }
+
   const id = `cli_${crypto.randomUUID()}`;
   db.prepare(`
     INSERT INTO clientes (id, nombre, identificacion, email, telefono, canal_preferido)
@@ -52,6 +84,11 @@ export function actualizarCliente(ruc, id, datos) {
   const email = datos.email ?? actual.email;
   const telefono = datos.telefono ?? actual.telefono;
   const canalPreferido = datos.canalPreferido ?? actual.canal_preferido;
+
+  validarDatosCliente({ email, telefono, canalPreferido });
+  if (existeIdentificacion(db, identificacion, id)) {
+    throw new Error(`Ya existe un cliente con identificación ${identificacion}`);
+  }
 
   db.prepare(`
     UPDATE clientes SET nombre = ?, identificacion = ?, email = ?, telefono = ?, canal_preferido = ?
@@ -93,6 +130,8 @@ export function crearFactura(ruc, clienteId, { numero, monto, fechaEmision, fech
   return db.prepare('SELECT * FROM facturas WHERE id = ?').get(id);
 }
 
+const ESTADOS_FACTURA_VALIDOS = ['pendiente', 'pagada', 'incobrable'];
+
 export function actualizarFactura(ruc, facturaId, datos) {
   const db = getDB(ruc);
   const actual = db.prepare('SELECT * FROM facturas WHERE id = ?').get(facturaId);
@@ -103,6 +142,13 @@ export function actualizarFactura(ruc, facturaId, datos) {
   const saldoPendiente = datos.saldoPendiente ?? actual.saldo_pendiente;
   const fechaVencimiento = datos.fechaVencimiento ?? actual.fecha_vencimiento;
   const estado = datos.estado ?? actual.estado;
+
+  if (datos.estado && !ESTADOS_FACTURA_VALIDOS.includes(datos.estado)) {
+    throw new Error(`estado debe ser uno de: ${ESTADOS_FACTURA_VALIDOS.join(', ')}`);
+  }
+  if (datos.monto !== undefined && datos.monto <= 0) {
+    throw new Error('monto debe ser mayor a 0');
+  }
 
   db.prepare(`
     UPDATE facturas SET numero = ?, monto = ?, saldo_pendiente = ?, fecha_vencimiento = ?, estado = ?

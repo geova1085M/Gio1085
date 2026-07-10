@@ -40,9 +40,13 @@ router.get('/clientes/:id', (req, res) => {
 });
 
 router.put('/clientes/:id', (req, res) => {
-  const cliente = crm.actualizarCliente(req.auth.ruc, req.params.id, req.body || {});
-  if (!cliente) return res.status(404).json({ ok: false, error: 'Cliente no encontrado' });
-  res.json({ ok: true, cliente });
+  try {
+    const cliente = crm.actualizarCliente(req.auth.ruc, req.params.id, req.body || {});
+    if (!cliente) return res.status(404).json({ ok: false, error: 'Cliente no encontrado' });
+    res.json({ ok: true, cliente });
+  } catch (err) {
+    res.status(400).json({ ok: false, error: err.message });
+  }
 });
 
 router.delete('/clientes/:id', (req, res) => {
@@ -65,9 +69,13 @@ router.post('/clientes/:id/facturas', (req, res) => {
 });
 
 router.put('/facturas/:id', (req, res) => {
-  const factura = crm.actualizarFactura(req.auth.ruc, req.params.id, req.body || {});
-  if (!factura) return res.status(404).json({ ok: false, error: 'Factura no encontrada' });
-  res.json({ ok: true, factura });
+  try {
+    const factura = crm.actualizarFactura(req.auth.ruc, req.params.id, req.body || {});
+    if (!factura) return res.status(404).json({ ok: false, error: 'Factura no encontrada' });
+    res.json({ ok: true, factura });
+  } catch (err) {
+    res.status(400).json({ ok: false, error: err.message });
+  }
 });
 
 router.delete('/facturas/:id', (req, res) => {
